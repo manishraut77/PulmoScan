@@ -1,17 +1,21 @@
-import React from "react"; // React
-import { BrowserRouter, Routes, Route } from "react-router-dom"; // routing
-import AppLayout from "./components/AppLayout"; // layout wrapper
-import LandingPage from "./pages/LandingPage"; // page
-import DiagnosisPage from "./pages/DiagnosisPage"; // page
+import React from "react";
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import AppLayout from "./components/AppLayout";
+import LandingPage from "./pages/LandingPage";
+import DiagnosisPage from "./pages/DiagnosisPage";
+import AboutAI from "./pages/AboutAI";
+import PastResultsPage from "./pages/PastResultsPage";
 
-export default function App() { // root component
+export default function App() {
   return (
-    <BrowserRouter> {/* enables routing */}
-      <Routes> {/* route table */}
-        <Route element={<AppLayout />}> {/* layout wraps children */}
-          <Route index element={<LandingPage />} /> {/* DEFAULT route for "/" */}
-          <Route path="diagnosis" element={<DiagnosisPage />} /> {/* "/diagnosis" */}
-          <Route path="*" element={<div>Not Found</div>} /> {/* if no route matches, show something */}
+    <BrowserRouter>
+      <Routes>
+        <Route element={<AppLayout />}>
+          <Route path="/" element={<LandingPage />} />
+          <Route path="/diagnosis" element={<DiagnosisPage />} />
+         
+          <Route path="/past-results" element={<PastResultsPage />} />
+           <Route path="/about-ai" element={<AboutAI />} />
         </Route>
       </Routes>
     </BrowserRouter>
