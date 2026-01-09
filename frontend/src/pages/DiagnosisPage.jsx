@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import UploadImage from "../components/ImageUpload";
 import { useOutletContext } from "react-router-dom";
 import { supabase } from "../services/supabaseClient";
@@ -66,25 +66,72 @@ function getPredictionSummary(label = "", confidence) {
   return `The AI suggests that: this X-ray is closer to "${label}"${pctText}.`;
 }
 
+const processingSteps = [
+  { key: "uploading", label: "Uploading image" },
+  { key: "running", label: "Running AI" },
+  { key: "ready", label: "Prediction summary" },
+];
+
 export default function DiagnosisPage() {
-  const [statusMessage, setStatusMessage] = useState("");
+  const [processState, setProcessState] = useState("idle");
+  const [processMessage, setProcessMessage] = useState("");
   const [lastImageUrl, setLastImageUrl] = useState("");
   const [aiResult, setAiResult] = useState(null);
+  const [progress, setProgress] = useState(0);
   const predictionTheme = aiResult ? getPredictionTheme(aiResult.label) : null;
-
+  const isProcessing = processState === "uploading" || processState === "running";
+  const hasError = processState === "error";
+  const currentStep = processingSteps.findIndex((step) => step.key === processState);
 
   const { session } = useOutletContext() || {};
   const userId = session?.user?.id;
 
+  useEffect(() => {
+    let intervalId;
 
-  async function handleUploadComplete(imageUrl, scanId ) {
+    if (processState === "uploading") {
+      setProgress((prev) => (prev < 15 ? 15 : prev));
+      intervalId = setInterval(() => {
+        setProgress((prev) => (prev < 45 ? prev + 2 : prev));
+      }, 260);
+    } else if (processState === "running") {
+      setProgress((prev) => (prev < 55 ? 55 : prev));
+      intervalId = setInterval(() => {
+        setProgress((prev) => (prev < 92 ? prev + 1 : prev));
+      }, 280);
+    } else if (processState === "ready") {
+      setProgress(100);
+    } else if (processState === "idle") {
+      setProgress(0);
+    } else if (processState === "error") {
+      setProgress(0);
+    }
 
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [processState]);
+
+  function handleUploadStart() {
+    setProcessState("uploading");
+    setProcessMessage("");
+    setAiResult(null);
+    setProgress(0);
+  }
+
+  function handleUploadError(message) {
+    setProcessState("error");
+    setProcessMessage(message);
+  }
+
+  async function handleUploadComplete(imageUrl, scanId) {
     setLastImageUrl(imageUrl);
-    setStatusMessage("Upload complete. Running AI...");
+    setProcessState("running");
+    setProcessMessage("");
     setAiResult(null);
 
     try {
-      const res = await fetch("http://localhost:8000/predict", {
+      const res = await fetch("https://tbs-4ix3.onrender.com/predict", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ imageUrl }),
@@ -94,28 +141,31 @@ export default function DiagnosisPage() {
       const data = await res.json();
       console.log(data);
       if (!res.ok) {
-        setStatusMessage(data.error || "AI request failed");
+        setProcessState("error");
+        setProcessMessage(data.error || "AI request failed");
         return;
       }
 
       setAiResult(data);
-      setStatusMessage("AI result ready.");
+      setProcessState("ready");
+      setProcessMessage("");
 
       if (scanId) {
-  await supabase
-    .from("scans")
-    .update({
-      prediction_label: data.label,
-      prediction_score: data.confidence,
-      prediction_json: data.probs,
-      status: "done",
-    })
-    .eq("id", scanId);
-}
+        await supabase
+          .from("scans")
+          .update({
+            prediction_label: data.label,
+            prediction_score: data.confidence,
+            prediction_json: data.probs,
+            status: "done",
+          })
+          .eq("id", scanId);
+      }
 
 
     } catch (e) {
-      setStatusMessage("AI request crashed: " + e.message);
+      setProcessState("error");
+      setProcessMessage("AI request crashed: " + e.message);
     }
   }
 
@@ -187,14 +237,6 @@ export default function DiagnosisPage() {
       color: "#64748B",
     },
 
-    // Messages: not “another box”, just a soft strip
-    message: {
-      padding: "6px 0",
-      color: "#0F172A",
-      fontWeight: 700,
-      fontSize: "var(--text-sm)",
-    },
-
     previewCol: {
       display: "grid",
       gap: 12,
@@ -262,6 +304,111 @@ export default function DiagnosisPage() {
     resultsSummary: {
       fontSize: "var(--text-sm)",
       color: "#334155",
+      lineHeight: 1.6,
+    },
+    processingWrap: {
+      display: "grid",
+      gap: 12,
+    },
+    processingSteps: {
+      display: "grid",
+      gap: 10,
+    },
+    processingStep: {
+      display: "grid",
+      gridTemplateColumns: "18px 1fr",
+      gap: 10,
+      alignItems: "center",
+    },
+    processingDotWrap: {
+      position: "relative",
+      width: 14,
+      height: 14,
+    },
+    processingDot: (isActive, isDone) => ({
+      width: 10,
+      height: 10,
+      borderRadius: 999,
+      background: isDone ? "#16A34A" : isActive ? "#0F172A" : "#CBD5E1",
+    }),
+    processingPulse: {
+      position: "absolute",
+      top: -3,
+      left: -3,
+      width: 16,
+      height: 16,
+      borderRadius: 999,
+      background: "rgba(15, 23, 42, 0.15)",
+      animation: "statusPulse 1.2s ease-in-out infinite",
+    },
+    processingLabel: (isActive, isDone) => ({
+      fontSize: "var(--text-sm)",
+      color: isDone ? "#16A34A" : isActive ? "#0F172A" : "#64748B",
+      fontWeight: isActive || isDone ? 800 : 600,
+    }),
+    processingBar: {
+      height: 6,
+      borderRadius: 999,
+      background: "#E2E8F0",
+      overflow: "hidden",
+    },
+    processingBarFill: (value) => ({
+      height: "100%",
+      width: `${Math.min(100, Math.max(6, value))}%`,
+      background: "linear-gradient(90deg, #0F172A, #64748B, #0F172A)",
+      backgroundSize: "200% 100%",
+      animation: "statusSweep 1.2s ease-in-out infinite",
+      borderRadius: 999,
+      transition: "width 240ms ease",
+    }),
+    processingNote: {
+      fontSize: "var(--text-sm)",
+      color: "#475569",
+      lineHeight: 1.6,
+      display: "flex",
+      alignItems: "center",
+      gap: 8,
+      flexWrap: "wrap",
+    },
+    processingEllipsis: {
+      display: "inline-flex",
+      gap: 4,
+      alignItems: "center",
+    },
+    processingEllipsisDot: (delayMs) => ({
+      width: 6,
+      height: 6,
+      borderRadius: 999,
+      background: "#94A3B8",
+      animation: "statusEllipsis 1.1s ease-in-out infinite",
+      animationDelay: `${delayMs}ms`,
+    }),
+    errorWrap: {
+      display: "grid",
+      gap: 6,
+      padding: 12,
+      borderRadius: 12,
+      border: "1px solid rgba(239, 68, 68, 0.25)",
+      background: "rgba(254, 226, 226, 0.4)",
+    },
+    errorTitle: {
+      display: "inline-flex",
+      alignItems: "center",
+      gap: 8,
+      color: "#B91C1C",
+      fontSize: "var(--text-sm)",
+      fontWeight: 800,
+    },
+    errorDot: {
+      width: 8,
+      height: 8,
+      borderRadius: 999,
+      background: "#EF4444",
+      boxShadow: "0 0 0 4px rgba(239, 68, 68, 0.18)",
+    },
+    errorText: {
+      color: "#991B1B",
+      fontSize: "var(--text-sm)",
       lineHeight: 1.6,
     },
     resultRow: {
@@ -344,10 +491,13 @@ export default function DiagnosisPage() {
                   <p style={styles.helper}>JPG / PNG recommended</p>
                 </div>
 
-                <UploadImage userId={userId} onUploadComplete={handleUploadComplete} />
+                <UploadImage
+                  userId={userId}
+                  onUploadStart={handleUploadStart}
+                  onUploadError={handleUploadError}
+                  onUploadComplete={handleUploadComplete}
+                />
               </div>
-
-              {statusMessage && <div style={styles.message}>{statusMessage}</div>}
 
               <div style={styles.previewCol}>
                 <div style={styles.previewHeader}>
@@ -369,50 +519,95 @@ export default function DiagnosisPage() {
                   <div style={styles.results}>
                     <div style={styles.resultsHeader}>Prediction summary</div>
                     {aiResult ? (
-                  <>
-                    <div style={styles.resultRow}>
-                      <div style={styles.resultGroup}>
-                        <div style={styles.resultLabel}>
-                          <span
-                            style={styles.resultDot(
-                              predictionTheme ? predictionTheme.color : undefined,
-                              predictionTheme ? predictionTheme.soft : undefined
-                            )}
-                          />
-                          Prediction
-                        </div>
-                        <div
-                          style={styles.resultValue(
-                            predictionTheme ? predictionTheme.color : undefined
-                          )}
-                        >
-                          {aiResult.label}
-                        </div>
-                      </div>
-                      <div style={styles.resultGroup}>
-                        <div style={styles.resultLabel}>Confidence</div>
-                        <div style={styles.resultValue()}>
-                          {Math.round(aiResult.confidence * 100)}%
-                        </div>
-                        <div style={styles.meterWrap}>
-                          <div style={styles.meter}>
+                      <>
+                        <div style={styles.resultRow}>
+                          <div style={styles.resultGroup}>
+                            <div style={styles.resultLabel}>
+                              <span
+                                style={styles.resultDot(
+                                  predictionTheme ? predictionTheme.color : undefined,
+                                  predictionTheme ? predictionTheme.soft : undefined
+                                )}
+                              />
+                              Prediction
+                            </div>
                             <div
-                              style={styles.meterFill(
-                                aiResult.confidence * 100,
-                                predictionTheme ? predictionTheme.gradient : undefined
+                              style={styles.resultValue(
+                                predictionTheme ? predictionTheme.color : undefined
                               )}
-                            />
+                            >
+                              {aiResult.label}
+                            </div>
+                          </div>
+                          <div style={styles.resultGroup}>
+                            <div style={styles.resultLabel}>Confidence</div>
+                            <div style={styles.resultValue()}>
+                              {Math.round(aiResult.confidence * 100)}%
+                            </div>
+                            <div style={styles.meterWrap}>
+                              <div style={styles.meter}>
+                                <div
+                                  style={styles.meterFill(
+                                    aiResult.confidence * 100,
+                                    predictionTheme ? predictionTheme.gradient : undefined
+                                  )}
+                                />
+                              </div>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </div>
-                    <div style={styles.resultsSummary}>
-                      {getPredictionSummary(aiResult.label, aiResult.confidence)}
-                    </div>
+                        <div style={styles.resultsSummary}>
+                          {getPredictionSummary(aiResult.label, aiResult.confidence)}
+                        </div>
                         {aiResult.explanation && (
                           <div style={styles.explanation}>{aiResult.explanation}</div>
                         )}
                       </>
+                    ) : isProcessing ? (
+                      <div style={styles.processingWrap}>
+                        <div style={styles.processingSteps}>
+                          {processingSteps.map((step, index) => {
+                            const isActive = currentStep === index;
+                            const isDone = currentStep > index;
+                            return (
+                              <div key={step.key} style={styles.processingStep}>
+                                <div style={styles.processingDotWrap}>
+                                  <span style={styles.processingDot(isActive, isDone)} />
+                                  {isActive && <span style={styles.processingPulse} />}
+                                </div>
+                                <span style={styles.processingLabel(isActive, isDone)}>
+                                  {step.label}
+                                </span>
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={styles.processingBar}>
+                          <div style={styles.processingBarFill(progress)} />
+                        </div>
+                        <div style={styles.processingNote}>
+                          <span>
+                            {processState === "uploading"
+                              ? "Uploading your X-ray and registering the scan."
+                              : "Running the model and assembling your summary."}
+                          </span>
+                          <span style={styles.processingEllipsis}>
+                            <span style={styles.processingEllipsisDot(0)} />
+                            <span style={styles.processingEllipsisDot(180)} />
+                            <span style={styles.processingEllipsisDot(360)} />
+                          </span>
+                        </div>
+                      </div>
+                    ) : hasError ? (
+                      <div style={styles.errorWrap}>
+                        <div style={styles.errorTitle}>
+                          <span style={styles.errorDot} />
+                          Something went wrong
+                        </div>
+                        <div style={styles.errorText}>
+                          {processMessage || "AI request failed. Please try again."}
+                        </div>
+                      </div>
                     ) : (
                       <div style={styles.emptyText}>
                         No prediction yet. Run a prediction to see results and confidence.

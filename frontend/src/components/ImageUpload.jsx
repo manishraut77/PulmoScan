@@ -1,7 +1,12 @@
 import React, { useRef, useState } from "react";
 import { supabase } from "../services/supabaseClient";
 
-export default function UploadImage({ userId, onUploadComplete }) {
+export default function UploadImage({
+  userId,
+  onUploadComplete,
+  onUploadStart,
+  onUploadError,
+}) {
   const inputRef = useRef(null);
   const [imageFile, setImageFile] = useState(null);
   const [uploading, setUploading] = useState(false);
@@ -38,6 +43,7 @@ export default function UploadImage({ userId, onUploadComplete }) {
 
     setUploading(true);
     setMessage("");
+    if (onUploadStart) onUploadStart();
 
     // Create a unique file name
     const fileName = `${userId}-${Date.now()}-${imageFile.name}`;
@@ -46,8 +52,10 @@ export default function UploadImage({ userId, onUploadComplete }) {
     const upload = await supabase.storage.from("xray-images").upload(fileName, imageFile);
 
     if (upload.error) {
-      setMessage("Upload failed: " + upload.error.message);
+      const errorMessage = "Upload failed: " + upload.error.message;
+      setMessage(errorMessage);
       setUploading(false);
+      if (onUploadError) onUploadError(errorMessage);
       return;
     }
 
@@ -56,22 +64,22 @@ export default function UploadImage({ userId, onUploadComplete }) {
     const imagePath = url.data.publicUrl;
 
     // NEW: Insert record into public.scans table
-      const insert = await supabase
+    const insert = await supabase
       .from("scans")
       .insert([{ user_id: userId, image_path: imagePath }])
       .select("id")
       .single();
 
-      const scanId = insert.data.id;
-      console.log("Inserted scan record with ID:", scanId);
-
-
-
     if (insert.error) {
-      setMessage("DB insert failed: " + insert.error.message);
+      const errorMessage = "DB insert failed: " + insert.error.message;
+      setMessage(errorMessage);
       setUploading(false);
+      if (onUploadError) onUploadError(errorMessage);
       return;
     }
+
+    const scanId = insert.data.id;
+    console.log("Inserted scan record with ID:", scanId);
 
     setMessage("");
     setUploading(false);
@@ -81,7 +89,7 @@ export default function UploadImage({ userId, onUploadComplete }) {
     if (inputRef.current) inputRef.current.value = "";
 
     // Notify parent component with the uploaded image URL
-    if (onUploadComplete) onUploadComplete(imagePath,scanId);
+    if (onUploadComplete) onUploadComplete(imagePath, scanId);
   }
 
   const disabledUpload = uploading || !imageFile;
