@@ -16,7 +16,7 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:5173",
-        "https://mrtbs.vercel.app/diagnosis",  # or your custom domain
+        "https://mrtbs.vercel.app/",  
     ],
     allow_methods=["*"],
     allow_headers=["*"],
