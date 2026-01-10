@@ -11,7 +11,7 @@ from pydantic import BaseModel
 from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
-
+#  "Fix CORS origins for Vercel"
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
