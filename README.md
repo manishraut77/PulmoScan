@@ -1,4 +1,4 @@
-##PulmoScan -- Tuberculosis Detection System
+## PulmoScan -- Tubercluosis Screening System
 
 **Description:** A machine learning-powered application that analyzes chest X-ray images to identify signs of tuberculosis. The system combines a Python-based backend for model training and inference with a responsive React/Vite frontend for user interaction.
 
